@@ -3,6 +3,7 @@ package xk6_mongo
 import (
 	"context"
 	"log"
+	"strings"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -87,11 +88,37 @@ func (c *Client) Upsert(database string, collection string, filter interface{}, 
 	return nil
 }
 
-func (c *Client) Find(database string, collection string, filter interface{}, sort interface{}, limit int64) ([]bson.M, error) {
+func (c *Client) Find(database string, collection string, filter string, sort interface{}, limit int64, canonical bool) ([]bson.M, error) {
 	db := c.client.Database(database)
 	col := db.Collection(collection)
 	opts := options.Find().SetSort(sort).SetLimit(limit)
-	cur, err := col.Find(context.Background(), filter, opts)
+
+	var bsonFilter bson.D
+	if filter != "" {
+		// log.Printf("MongoDB Query is %+v", filter)
+
+		trimmedFilter := strings.TrimSpace(filter)
+
+		// log.Printf(`DEBUG: Raw filter string as quoted literal: %q`, trimmedFilter)
+
+		// This will show us the integer value of the first few bytes.
+		// if len(trimmedFilter) > 5 {
+		// 	log.Printf("DEBUG: First 5 bytes of filter: %v", []byte(trimmedFilter)[:5])
+		// }
+
+		bsonErr := bson.UnmarshalExtJSON([]byte(trimmedFilter), canonical, &bsonFilter)
+		if bsonErr != nil {
+			log.Printf("Error while unmarshalling filter: %v", bsonErr)
+			return nil, bsonErr
+		} else {
+			// log.Print("successfully unmarshalled filter")
+		}
+	} else {
+		// log.Printf("Getting all Elements from Collection")
+		bsonFilter = bson.D{}
+	}
+
+	cur, err := col.Find(context.Background(), bsonFilter, opts)
 	if err != nil {
 		log.Printf("Error while finding documents: %v", err)
 		return nil, err
