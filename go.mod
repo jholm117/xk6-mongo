@@ -1,4 +1,4 @@
-module github.com/GhMartingit/xk6-mongo
+module github.com/jholm117/xk6-mongo
 
 go 1.23.0
 
