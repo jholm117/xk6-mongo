@@ -88,33 +88,22 @@ func (c *Client) Upsert(database string, collection string, filter interface{}, 
 	return nil
 }
 
-func (c *Client) Find(database string, collection string, filter string, sort interface{}, limit int64, canonical bool) ([]bson.M, error) {
+func (c *Client) Find(database string, collection string, filter string, sort interface{}, limit int64, canonical bool, discardResponseBodies bool) ([]bson.M, error) {
 	db := c.client.Database(database)
 	col := db.Collection(collection)
 	opts := options.Find().SetSort(sort).SetLimit(limit)
 
 	var bsonFilter bson.D
 	if filter != "" {
-		// log.Printf("MongoDB Query is %+v", filter)
-
 		trimmedFilter := strings.TrimSpace(filter)
-
-		// log.Printf(`DEBUG: Raw filter string as quoted literal: %q`, trimmedFilter)
-
-		// This will show us the integer value of the first few bytes.
-		// if len(trimmedFilter) > 5 {
-		// 	log.Printf("DEBUG: First 5 bytes of filter: %v", []byte(trimmedFilter)[:5])
-		// }
 
 		bsonErr := bson.UnmarshalExtJSON([]byte(trimmedFilter), canonical, &bsonFilter)
 		if bsonErr != nil {
 			log.Printf("Error while unmarshalling filter: %v", bsonErr)
 			return nil, bsonErr
-		} else {
-			// log.Print("successfully unmarshalled filter")
 		}
+
 	} else {
-		// log.Printf("Getting all Elements from Collection")
 		bsonFilter = bson.D{}
 	}
 
@@ -123,6 +112,27 @@ func (c *Client) Find(database string, collection string, filter string, sort in
 		log.Printf("Error while finding documents: %v", err)
 		return nil, err
 	}
+
+	defer cur.Close(context.Background())
+
+	if discardResponseBodies {
+		// If discardResponseBodies is true, we still need to iterate through the
+		// cursor to ensure the network data is consumed and the cursor is properly
+		// closed. Without this, the server might hold resources, or subsequent
+		// operations might misbehave if the client doesn't fully drain the cursor.
+		// However, we just discard each result without decoding.
+		for cur.Next(context.Background()) {
+			// Do nothing with cur.Current or cur.Decode, effectively discarding
+			// the document data without decoding it into 'results'.
+		}
+		if err := cur.Err(); err != nil {
+			log.Printf("Error during cursor iteration while discarding body: %v", err)
+			return nil, err
+		}
+
+		return nil, nil
+	}
+
 	var results []bson.M
 	if err = cur.All(context.Background(), &results); err != nil {
 		log.Printf("Error while decoding documents: %v", err)
