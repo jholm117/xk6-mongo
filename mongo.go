@@ -121,6 +121,7 @@ func (c *Client) Find(database string, collection string, filter string, sort in
 		// closed. Without this, the server might hold resources, or subsequent
 		// operations might misbehave if the client doesn't fully drain the cursor.
 		// However, we just discard each result without decoding.
+		log.Print("discarding response bodies")
 		for cur.Next(context.Background()) {
 			// Do nothing with cur.Current or cur.Decode, effectively discarding
 			// the document data without decoding it into 'results'.
